@@ -1,0 +1,86 @@
+trigger:
+  branches:
+    include:
+      - development
+      - production
+  paths:
+    include:
+      - context
+    exclude:
+      - context/app/volume
+      - context/app/tests
+
+resources:
+  - repo: self
+
+variables:
+  vmImageName: "ubuntu-latest"
+
+  # Service variables.
+  dockerfilePath: "context/."
+  acrTag: "latest"
+  acrImageName: "soffos-service-REPLACEME"
+
+  # Environment variables.
+  ${{ if eq(variables['Build.SourceBranchName'], 'development') }}:
+    rgName: "soffos-dev"
+    acrName: "soffosdev"
+    envName: "ML-DEV"
+  ${{ elseif eq(variables['Build.SourceBranchName'], 'production') }}:
+    rgName: "soffos-prod"
+    acrName: "soffosprod"
+    envName: "ML-PROD"
+  acrHostName: "$(acrName).azurecr.io"
+  commitSha: $(Build.SourceVersion)
+
+stages:
+  - stage: BuildAndPush
+    displayName: Build and Push
+    jobs:
+      - job: BuildAndPush
+        displayName: Build and Push
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - task: AzureCLI@2
+            displayName: Get ACR Credentials
+            inputs:
+              azureSubscription: $(rgName)
+              scriptType: "pscore"
+              scriptLocation: "inlineScript"
+              inlineScript: "az acr login --name $(acrName)"
+
+          - script: docker build -t $(acrHostName)/$(acrImageName):$(acrTag) $(dockerfilePath)
+            displayName: Build Docker Image
+
+          - script: docker push $(acrHostName)/$(acrImageName):$(acrTag)
+            displayName: Push Docker Image
+
+  - stage: PullAndDeploy
+    displayName: Pull and Deploy
+    jobs:
+      - deployment: PullAndDeploy
+        displayName: Pull and Deploy
+        environment:
+          name: $(envName)
+          resourceType: VirtualMachine
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - script: kubectl create configmap $(acrImageName) --from-env-file=.env -o yaml --dry-run=client | kubectl apply -f -
+                  displayName: Create or Update ConfigMap
+
+                - script: kubectl apply -f manifests/service.yml
+                  displayName: Apply Service
+
+                - script: sed -i -e 's/{{acrName}}/$(acrName)/g' manifests/deployment.yml
+                  displayName: Replace ACR Name
+                
+                - script: sed -i -e 's/{{commitSha}}/$(commitSha)/g' manifests/deployment.yml
+                  displayName: Replace commit sha
+
+                - script: kubectl apply -f manifests/deployment.yml
+                  displayName: Apply Deployment

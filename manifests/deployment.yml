@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soffos-service-REPLACEME
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soffos-service-REPLACEME
+  template:
+    metadata:
+      annotations:
+        commit_sha: {{commitSha}}
+      labels:
+        app: soffos-service-REPLACEME
+    spec:
+      volumes:
+        - name: soffos-service-REPLACEME
+          hostPath:
+            path: /mnt/soffos-service-REPLACEME
+      containers:
+        - name: soffos-service-REPLACEME
+          image: {{acrName}}.azurecr.io/soffos-service-REPLACEME
+          volumeMounts:
+            - name: soffos-service-REPLACEME
+              mountPath: /app/volume/
+          envFrom:
+            - configMapRef:
+                name: soffos-service-REPLACEME
+          ports:
+            - containerPort: 80

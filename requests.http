@@ -1,0 +1,9 @@
+#Press Ctrl+Alt+E to bring up the environment selection.
+#Select "local" as defined in .vscode/settings.json to load the "base_url" variable. 
+
+POST {{base_url}}/
+Content-Type: application/json
+
+{
+  
+}
